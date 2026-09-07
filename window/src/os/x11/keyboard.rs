@@ -808,6 +808,8 @@ impl Keyboard {
     }
 }
 
+/// Build the compose table for the process locale, falling back to the system
+/// Compose files when xkbcommon cannot resolve that locale itself.
 fn new_compose_table(context: &xkb::Context) -> anyhow::Result<xkb::compose::Table> {
     let locale = query_lc_ctype()?;
     xkb::compose::Table::new_from_locale(context, locale, xkb::compose::COMPILE_NO_FLAGS)
@@ -815,6 +817,7 @@ fn new_compose_table(context: &xkb::Context) -> anyhow::Result<xkb::compose::Tab
         .map_err(|_| anyhow!("Failed to acquire compose table for locale {locale:?}"))
 }
 
+/// Load a locale-specific Compose file, then fall back to the portable C locale.
 fn new_compose_table_from_file(
     context: &xkb::Context,
     locale: &OsStr,
@@ -840,8 +843,10 @@ fn new_compose_table_from_file(
     Err(())
 }
 
+/// Initialize the C runtime locale from the environment and return `LC_CTYPE`.
 fn query_lc_ctype() -> anyhow::Result<&'static OsStr> {
-    // Rust does not initialize the C runtime locale from the environment.
+    // Rust does not initialize the C runtime locale from the environment,
+    // so pass "" below to force initialization from the environment.
     let ptr = unsafe { libc::setlocale(libc::LC_CTYPE, b"\0".as_ptr().cast()) };
     ensure!(
         !ptr.is_null(),
