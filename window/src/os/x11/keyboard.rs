@@ -808,39 +808,19 @@ impl Keyboard {
     }
 }
 
-/// Build the compose table for the process locale, falling back to the system
-/// Compose files when xkbcommon cannot resolve that locale itself.
+/// Build the compose table for the process locale, retrying with the C locale
+/// when xkbcommon cannot resolve it. xkbcommon owns Compose-file discovery.
 fn new_compose_table(context: &xkb::Context) -> anyhow::Result<xkb::compose::Table> {
     let locale = query_lc_ctype()?;
     xkb::compose::Table::new_from_locale(context, locale, xkb::compose::COMPILE_NO_FLAGS)
-        .or_else(|_| new_compose_table_from_file(context, locale))
+        .or_else(|_| {
+            xkb::compose::Table::new_from_locale(
+                context,
+                OsStr::new("C"),
+                xkb::compose::COMPILE_NO_FLAGS,
+            )
+        })
         .map_err(|_| anyhow!("Failed to acquire compose table for locale {locale:?}"))
-}
-
-/// Load a locale-specific Compose file, then fall back to the portable C locale.
-fn new_compose_table_from_file(
-    context: &xkb::Context,
-    locale: &OsStr,
-) -> Result<xkb::compose::Table, ()> {
-    let locale_dir = std::path::Path::new("/usr/share/X11/locale");
-    for (candidate, candidate_locale) in [
-        (locale_dir.join(locale).join("Compose"), locale),
-        (locale_dir.join("C/Compose"), OsStr::new("C")),
-    ] {
-        let Ok(bytes) = std::fs::read(candidate) else {
-            continue;
-        };
-        if let Ok(table) = xkb::compose::Table::new_from_buffer(
-            context,
-            bytes,
-            candidate_locale,
-            xkb::compose::FORMAT_TEXT_V1,
-            xkb::compose::COMPILE_NO_FLAGS,
-        ) {
-            return Ok(table);
-        }
-    }
-    Err(())
 }
 
 /// Initialize the C runtime locale from the environment and return `LC_CTYPE`.
